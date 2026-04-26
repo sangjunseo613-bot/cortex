@@ -1,0 +1,260 @@
+.zc-panel {
+  padding: 12px;
+  font-size: 0.92em;
+}
+
+.zc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.zc-header h3 {
+  margin: 0;
+}
+
+.zc-seed {
+  color: var(--text-muted);
+  font-size: 0.9em;
+  flex: 1 1 auto;
+}
+
+.zc-refresh,
+.zc-reload {
+  padding: 2px 8px;
+  font-size: 0.85em;
+}
+
+.zc-loading {
+  color: var(--text-muted);
+  padding: 12px 0;
+}
+
+.zc-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.zc-warn {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-left: 3px solid var(--text-warning);
+  color: var(--text-normal);
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 0.85em;
+  border-radius: 3px;
+  line-height: 1.5;
+}
+
+.zc-warn + .zc-warn {
+  margin-top: -4px;
+}
+
+.zc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.zc-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--background-secondary);
+}
+
+.zc-card:hover {
+  border-color: var(--interactive-accent);
+}
+
+.zc-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.zc-check {
+  margin: 3px 0 0 0;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.zc-title {
+  font-weight: 600;
+  line-height: 1.35;
+  margin: 0;
+  flex: 1 1 auto;
+  cursor: pointer;
+  user-select: none;
+}
+
+.zc-id {
+  color: var(--text-accent);
+  font-family: var(--font-monospace);
+}
+
+.zc-claim {
+  color: var(--text-normal);
+}
+
+.zc-meta {
+  font-size: 0.82em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.zc-reason {
+  font-size: 0.82em;
+  color: var(--text-faint);
+  margin-bottom: 6px;
+}
+
+.zc-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.zc-actions button {
+  padding: 2px 8px;
+  font-size: 0.82em;
+}
+
+.zc-actionbar {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--background-modifier-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  background: var(--background-primary);
+  position: sticky;
+  bottom: 0;
+}
+
+.zc-actionbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88em;
+}
+
+.zc-actionbar-right {
+  display: flex;
+  gap: 6px;
+}
+
+.zc-count {
+  color: var(--text-muted);
+}
+
+.zc-linkbtn {
+  background: transparent;
+  border: none;
+  color: var(--text-accent);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 0.85em;
+}
+.zc-linkbtn:hover {
+  text-decoration: underline;
+}
+
+.zc-savebtn,
+.zc-runbtn {
+  padding: 4px 10px;
+  font-size: 0.85em;
+}
+
+/* ─── Progress panel ─────────────────────────────── */
+.zc-progress {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  background: var(--background-secondary);
+  position: relative;
+}
+
+.zc-progress-header {
+  font-weight: 600;
+  font-size: 0.9em;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+}
+
+.zc-progress-running {
+  color: var(--text-accent);
+}
+.zc-progress-success {
+  color: var(--text-success, var(--color-green));
+}
+.zc-progress-error {
+  color: var(--text-error);
+}
+
+.zc-progress-cancel {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 8px;
+  font-size: 0.8em;
+}
+
+.zc-progress-list {
+  max-height: 320px;
+  overflow-y: auto;
+  font-size: 0.85em;
+  font-family: var(--font-monospace);
+  line-height: 1.5;
+  padding: 4px 0;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.zc-progress-row {
+  display: flex;
+  gap: 6px;
+  padding: 3px 2px;
+  border-bottom: 1px dashed var(--background-modifier-border-hover);
+  align-items: flex-start;
+}
+
+.zc-progress-row:last-child {
+  border-bottom: none;
+}
+
+.zc-progress-icon {
+  flex-shrink: 0;
+  min-width: 1.2em;
+}
+
+.zc-progress-main {
+  flex: 1 1 auto;
+  word-break: break-word;
+}
+
+.zc-progress-text {
+  color: var(--text-normal);
+  font-weight: 500;
+}
+
+.zc-progress-detail {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.zc-progress-err .zc-progress-text {
+  color: var(--text-error);
+}
+
+.zc-progress-open {
+  margin-top: 10px;
+  width: 100%;
+}

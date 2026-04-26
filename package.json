@@ -1,0 +1,33 @@
+{
+  "name": "cortex",
+  "version": "0.0.1",
+  "description": "Cortex — Second Brain Obsidian plugin. Hybrid structural + semantic recommender, graph analysis, identity guards, Codex CLI handoff.",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "jest"
+  },
+  "keywords": ["obsidian-plugin", "zettelkasten", "second-brain", "knowledge-graph", "codex"],
+  "author": "futurewave",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.11.0",
+    "@typescript-eslint/eslint-plugin": "^6.7.0",
+    "@typescript-eslint/parser": "^6.7.0",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.19.0",
+    "jest": "^29.7.0",
+    "obsidian": "latest",
+    "ts-jest": "^29.1.0",
+    "tslib": "^2.6.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "graphology": "^0.25.4",
+    "graphology-communities-louvain": "^2.0.1",
+    "graphology-metrics": "^2.1.0",
+    "js-yaml": "^4.1.0"
+  }
+}

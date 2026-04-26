@@ -1,0 +1,9 @@
+{
+  "id": "cortex",
+  "name": "Cortex",
+  "version": "0.0.1",
+  "minAppVersion": "1.5.0",
+  "description": "Second Brain. 5-tool integration (Karpathy wiki / SwarmVault / Zettel Connect / Graphify / InfraNodus). Codex-powered.",
+  "author": "futurewave",
+  "isDesktopOnly": true
+}

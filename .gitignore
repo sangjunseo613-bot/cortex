@@ -1,0 +1,9 @@
+node_modules/
+main.js.map
+*.log
+.DS_Store
+data.json
+
+# Plugin runtime state — regenerated per-vault by the plugin.
+# Contains user-specific graph, LLM cache, audit log, diagnostics.
+state/
