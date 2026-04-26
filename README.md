@@ -30,7 +30,7 @@
 ## 빌드
 
 ```bash
-cd ~/Desktop/zettel-connect-starter/.obsidian/plugins/cortex
+cd <your-vault>/.obsidian/plugins/cortex
 npm install
 npm run build        # production
 npm run dev          # watch
