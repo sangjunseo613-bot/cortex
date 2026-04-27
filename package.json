@@ -1,6 +1,6 @@
 {
   "name": "cortex",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Cortex — Second Brain Obsidian plugin. Hybrid structural + semantic recommender, graph analysis, identity guards, Codex CLI handoff.",
   "main": "main.js",
   "scripts": {

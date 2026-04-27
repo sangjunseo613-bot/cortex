@@ -210,16 +210,20 @@ export class ReviewPanel extends ItemView {
   }
 
   private async approveOne(item: ApprovalItem): Promise<void> {
-    try {
-      const dest = await promoteCandidate(this.app, item.path);
-      new Notice(`✅ 승인: ${item.path} → ${dest}`, 5000);
-      await this.refresh();
-    } catch (err) {
+    const result = await promoteCandidate(this.app, item.path);
+    if (result.kind === "moved") {
+      new Notice(`✅ 승인: ${item.path} → ${result.dest}`, 5000);
+    } else if (result.kind === "merged") {
       new Notice(
-        `❌ 승인 실패: ${err instanceof Error ? err.message : String(err)}`,
-        8000,
+        `🔀 병합: ${item.path} → ${result.dest} (+${result.addedMentions} 발췌)`,
+        5000,
       );
+    } else if (result.kind === "skipped") {
+      new Notice(`⏭ 건너뜀: ${result.reason}`, 5000);
+    } else {
+      new Notice(`❌ 승인 실패: ${result.message}`, 8000);
     }
+    await this.refresh();
   }
 
   private async rejectOne(item: ApprovalItem): Promise<void> {
@@ -241,17 +245,30 @@ export class ReviewPanel extends ItemView {
       new Notice("선택된 후보가 없습니다.");
       return;
     }
-    let ok = 0;
-    const errors: string[] = [];
+    let moved = 0,
+      merged = 0,
+      skipped = 0,
+      errors = 0;
+    const errMsgs: string[] = [];
     for (const p of targets) {
-      try {
-        await promoteCandidate(this.app, p);
-        ok++;
-      } catch (err) {
-        errors.push(`${p}: ${err instanceof Error ? err.message : String(err)}`);
+      const r = await promoteCandidate(this.app, p);
+      if (r.kind === "moved") moved++;
+      else if (r.kind === "merged") merged++;
+      else if (r.kind === "skipped") skipped++;
+      else {
+        errors++;
+        errMsgs.push(`${p}: ${r.message}`);
       }
     }
-    new Notice(`✅ ${ok}개 승인${errors.length > 0 ? ` · ${errors.length}개 실패` : ""}`, 6000);
+    const parts: string[] = [];
+    if (moved > 0) parts.push(`✅ ${moved} 승인`);
+    if (merged > 0) parts.push(`🔀 ${merged} 병합`);
+    if (skipped > 0) parts.push(`⏭ ${skipped} 건너뜀`);
+    if (errors > 0) parts.push(`❌ ${errors} 실패`);
+    new Notice(parts.join(" · "), 8000);
+    if (errors > 0) {
+      console.warn("[cortex] bulkApprove errors:", errMsgs);
+    }
     await this.refresh();
   }
 

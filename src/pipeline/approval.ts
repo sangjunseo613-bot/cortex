@@ -61,31 +61,125 @@ async function readCandidate(
 }
 
 /**
- * Promote a candidate. Moves the file from `wiki/candidates/<sub>/X.md` to
- * `wiki/<sub>/X.md`. Auto-creates the destination folder.
+ * Result of a promote attempt. Allows the caller to distinguish:
+ *   - moved   : 정상 승인 (destination 비어있어서 그냥 이동)
+ *   - merged  : entity 병합 (destination 존재 → 발췌·출처 추가)
+ *   - skipped : 중복 (concept 같은 이름 또는 entity 같은 source_hash)
+ *   - error   : 실제 실패
  */
-export async function promoteCandidate(app: App, path: string): Promise<string> {
+export type PromoteResult =
+  | { kind: "moved"; dest: string }
+  | { kind: "merged"; dest: string; addedMentions: number }
+  | { kind: "skipped"; reason: string }
+  | { kind: "error"; message: string };
+
+/**
+ * Promote a candidate intelligently.
+ *
+ * Branching when destination already exists:
+ *   - **concept**: silent skip — concepts are atomic propositions, same-named
+ *                  one means the proposition was already approved earlier.
+ *                  We delete the candidate to clear the queue.
+ *   - **entity**:  attempt MERGE — entities are backlink hubs by design.
+ *                  Same name across multiple raw notes is normal and the
+ *                  whole point. We append the candidate's mentions/source
+ *                  to the existing destination, then delete the candidate.
+ *                  If the candidate's source_hash already appears in the
+ *                  destination, we skip (already merged earlier).
+ */
+export async function promoteCandidate(app: App, path: string): Promise<PromoteResult> {
   const norm = normalizePath(path);
   if (!norm.startsWith(`${CANDIDATES_ROOT}/`)) {
-    throw new Error(`승인 대상이 candidates 폴더에 없습니다: ${path}`);
+    return { kind: "error", message: `승인 대상이 candidates 폴더에 없습니다: ${path}` };
   }
-  const dest = norm.replace(`${CANDIDATES_ROOT}/`, "1 wiki/");
-  await ensureDirOf(app, dest);
 
   const file = app.vault.getAbstractFileByPath(norm);
-  if (file instanceof TFile) {
-    await app.fileManager.renameFile(file, dest);
-  } else {
-    throw new Error(`파일을 찾을 수 없습니다: ${path}`);
+  if (!(file instanceof TFile)) {
+    return { kind: "error", message: `파일을 찾을 수 없습니다: ${path}` };
   }
 
-  await appendAuditLog(app, {
-    ts: Date.now(),
-    action: "approve",
-    paths: [norm, dest],
-  });
+  const dest = norm.replace(`${CANDIDATES_ROOT}/`, "1 wiki/");
+  const isEntity = norm.startsWith(`${CANDIDATES_ROOT}/entities/`);
+  await ensureDirOf(app, dest);
 
-  return dest;
+  // ── Path A: destination empty → simple move (Phase 4 original behavior) ─
+  const destExists = await app.vault.adapter.exists(dest);
+  if (!destExists) {
+    try {
+      await app.fileManager.renameFile(file, dest);
+      await appendAuditLog(app, {
+        ts: Date.now(),
+        action: "approve",
+        paths: [norm, dest],
+      });
+      return { kind: "moved", dest };
+    } catch (err) {
+      return { kind: "error", message: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  // ── Path B: destination exists ─────────────────────────────────────────
+  if (!isEntity) {
+    // Concept: silent skip + delete candidate
+    try {
+      await app.fileManager.trashFile(file);
+      await appendAuditLog(app, {
+        ts: Date.now(),
+        action: "skip",
+        paths: [norm],
+        detail: `dest exists: ${dest}`,
+      });
+      return { kind: "skipped", reason: `이미 같은 이름의 concept 존재 (${dest})` };
+    } catch (err) {
+      return { kind: "error", message: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  // Entity merge path
+  try {
+    const candRaw = await app.vault.adapter.read(norm);
+    const dstRaw = await app.vault.adapter.read(dest);
+    const candFm = parseShallowFrontmatter(candRaw);
+    const dstFm = parseShallowFrontmatter(dstRaw);
+
+    // Detect already-merged case via source_hash
+    const candHash = String(candFm.source_hash ?? "").trim();
+    if (candHash && dstRawContainsHash(dstRaw, candHash)) {
+      // already merged — drop candidate
+      await app.fileManager.trashFile(file);
+      await appendAuditLog(app, {
+        ts: Date.now(),
+        action: "skip",
+        paths: [norm],
+        detail: `source_hash already merged: ${candHash.slice(0, 12)}…`,
+      });
+      return { kind: "skipped", reason: "동일 source_hash가 이미 병합됨" };
+    }
+
+    // Merge mentions and source list into the destination
+    const candMentions = extractMentions(candRaw);
+    const candSource = String(candFm.source ?? "").trim();
+    const merged = mergeEntityFile(dstRaw, {
+      newMentions: candMentions,
+      newSource: candSource,
+      newSourceHash: candHash,
+      newGeneratedAt: String(candFm.generated_at ?? new Date().toISOString()),
+      newTags: Array.isArray(candFm.tags) ? candFm.tags.map(String) : [],
+    });
+    await app.vault.adapter.write(dest, merged.content);
+    await app.fileManager.trashFile(file);
+
+    await appendAuditLog(app, {
+      ts: Date.now(),
+      action: "approve",
+      paths: [norm, dest],
+      detail: `merged: +${merged.addedMentions} mentions, +1 source`,
+    });
+
+    return { kind: "merged", dest, addedMentions: merged.addedMentions };
+  } catch (err) {
+    return { kind: "error", message: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 /** Reject = delete + log. */
@@ -119,6 +213,175 @@ export async function appendAuditLog(app: App, entry: AuditEntry): Promise<void>
   } catch (err) {
     console.warn("[cortex] audit log write failed:", err);
   }
+}
+
+// ─── Entity merge helpers ─────────────────────────────────
+
+/** Cheap substring check — source_hash serializes without quotes (hex). */
+function dstRawContainsHash(raw: string, hash: string): boolean {
+  if (!hash) return false;
+  return (
+    raw.includes(`source_hash: ${hash}`) ||
+    raw.includes(`source_hash: "${hash}"`) ||
+    raw.includes(`- source_hash: ${hash}`)
+  );
+}
+
+/**
+ * Extract `> ` quoted mention lines from a candidate's `## 발췌` section.
+ * Resilient to extra blank lines or callouts.
+ */
+function extractMentions(raw: string): string[] {
+  const lines = raw.split(/\r?\n/);
+  const idx = lines.findIndex((l) => /^##\s+발췌\s*$/.test(l));
+  if (idx < 0) return [];
+  const out: string[] = [];
+  let buf: string[] = [];
+  for (let i = idx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^##\s+/.test(line)) break; // next section
+    if (/^>\s?/.test(line)) {
+      buf.push(line.replace(/^>\s?/, ""));
+    } else if (line.trim() === "") {
+      if (buf.length > 0) {
+        out.push(buf.join("\n"));
+        buf = [];
+      }
+    } else if (line.trim() === ">") {
+      // separator between blockquote items
+      if (buf.length > 0) {
+        out.push(buf.join("\n"));
+        buf = [];
+      }
+    }
+  }
+  if (buf.length > 0) out.push(buf.join("\n"));
+  return out.map((m) => m.trim()).filter(Boolean);
+}
+
+/**
+ * Merge new content into an existing entity markdown.
+ * - Appends new (deduped) mentions to `## 발췌`.
+ * - Appends a new `- 원본: [[...]]` line under `## 출처`.
+ * - Appends a hidden `<!-- merged-source: ... -->` HTML comment with the
+ *   candidate's source_hash so future merges can detect dedup.
+ * - Unions tags into frontmatter.
+ *
+ * Returns the rewritten content + count of mentions actually added.
+ */
+function mergeEntityFile(
+  dstRaw: string,
+  payload: {
+    newMentions: string[];
+    newSource: string;
+    newSourceHash: string;
+    newGeneratedAt: string;
+    newTags: string[];
+  },
+): { content: string; addedMentions: number } {
+  let content = dstRaw;
+
+  // 1. Append new mentions to `## 발췌` (dedup against existing ones).
+  const existingMentions = new Set(extractMentions(dstRaw).map(normalizeForCompare));
+  const toAdd = payload.newMentions.filter(
+    (m) => !existingMentions.has(normalizeForCompare(m)),
+  );
+
+  if (toAdd.length > 0) {
+    const block = toAdd
+      .map((m) => `> ${m.replace(/\n/g, "\n> ")}`)
+      .join("\n>\n");
+    // Insert before the next `## 출처` if present, else at end of `## 발췌`.
+    if (/^##\s+발췌\s*$/m.test(content)) {
+      content = content.replace(
+        /(##\s+발췌\s*\n[\s\S]*?)(?=\n##\s+|$)/m,
+        (whole) => whole.replace(/\s*$/, "\n>\n" + block + "\n"),
+      );
+    } else {
+      // Defensive: file lacks `## 발췌` — append fresh section.
+      content += `\n\n## 발췌\n${block}\n`;
+    }
+  }
+
+  // 2. Append new source line + merge marker comment.
+  const sourceLine = payload.newSource
+    ? `- 원본: [[${payload.newSource.replace(/\.md$/i, "")}]] (병합: ${payload.newGeneratedAt.slice(0, 19)})`
+    : "";
+  const hashMarker = payload.newSourceHash
+    ? `<!-- merged-source: ${payload.newSourceHash} -->`
+    : "";
+  if (sourceLine || hashMarker) {
+    if (/^##\s+출처\s*$/m.test(content)) {
+      content = content.replace(
+        /(##\s+출처\s*\n[\s\S]*?)(?=\n##\s+|$)/m,
+        (whole) => whole.replace(/\s*$/, `\n${sourceLine}\n${hashMarker}\n`),
+      );
+    } else {
+      content += `\n\n## 출처\n${sourceLine}\n${hashMarker}\n`;
+    }
+  }
+
+  // 3. Union tags into frontmatter (line-level surgery to preserve comments).
+  if (payload.newTags.length > 0) {
+    content = unionTagsInFrontmatter(content, payload.newTags);
+  }
+
+  return { content, addedMentions: toAdd.length };
+}
+
+function normalizeForCompare(s: string): string {
+  return s.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * Add new tags to the frontmatter `tags:` block without disturbing other keys.
+ * If a tag already exists, it's not duplicated.
+ */
+function unionTagsInFrontmatter(raw: string, newTags: string[]): string {
+  const trimmed = raw.replace(/^﻿/, "");
+  if (!trimmed.startsWith("---")) return raw;
+  const lines = trimmed.split(/\r?\n/);
+  let endIdx = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === "---") {
+      endIdx = i;
+      break;
+    }
+  }
+  if (endIdx < 0) return raw;
+
+  // Find tags block
+  let tagsKeyIdx = -1;
+  for (let i = 1; i < endIdx; i++) {
+    if (/^tags\s*:\s*$/.test(lines[i])) {
+      tagsKeyIdx = i;
+      break;
+    }
+  }
+  if (tagsKeyIdx < 0) return raw; // no tags block — leave alone
+
+  // Collect existing list items
+  const existingTags = new Set<string>();
+  let lastListLine = tagsKeyIdx;
+  for (let i = tagsKeyIdx + 1; i < endIdx; i++) {
+    const m = lines[i].match(/^\s+-\s+(.+?)\s*$/);
+    if (!m) break;
+    existingTags.add(stripQuotes(m[1]).toLowerCase());
+    lastListLine = i;
+  }
+
+  const additions: string[] = [];
+  for (const t of newTags) {
+    const k = t.replace(/^#/, "").trim();
+    if (k && !existingTags.has(k.toLowerCase())) additions.push(`  - ${k}`);
+  }
+  if (additions.length === 0) return raw;
+
+  return [
+    ...lines.slice(0, lastListLine + 1),
+    ...additions,
+    ...lines.slice(lastListLine + 1),
+  ].join("\n");
 }
 
 // ─── helpers ──────────────────────────────────────────────
